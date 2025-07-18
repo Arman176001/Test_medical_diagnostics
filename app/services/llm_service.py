@@ -63,7 +63,7 @@ class MedicalLLMService:
         )
 
         # Configuration for the quality assessment model (Gemini)
-        self.quality_model = genai.GenerativeModel('gemini-1.5-flash')
+        self.quality_model = genai.GenerativeModel('gemini-2.5-flash')
 
     def _analyze_diagnosis_and_match(self, image_path: str, order_details: dict) -> dict:
         if not self.diagnostic_client:

@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["http://localhost:8000"],
+    "origin": ["https://test-medical-diagnostics.onrender.com"],
     "method": ["PUT", "OPTIONS"],
     "responseHeader": ["Content-Type"],
     "maxAgeSeconds": 3600
