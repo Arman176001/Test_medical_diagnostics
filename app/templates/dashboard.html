@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Medical Diagnostics Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #333;
+        }
+        .stats, .submissions {
+            background: #fff;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background: #007bff;
+            color: #fff;
+        }
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Medical Diagnostics Dashboard</h1>
+        
+        <div class="stats">
+            <h2>Statistics</h2>
+            <div id="statsContainer">
+                <p>Loading stats...</p>
+            </div>
+        </div>
+        
+        <div class="submissions">
+            <h2>Recent Submissions</h2>
+            <div id="submissionsContainer">
+                <p>Loading submissions...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                const container = document.getElementById('statsContainer');
+                container.innerHTML = `
+                    <p>Total Submissions: ${stats.total_submissions || 0}</p>
+                    <p>Completed: ${stats.completed || 0}</p>
+                    <p>Processing: ${stats.processing || 0}</p>
+                    <p>Failed: ${stats.failed || 0}</p>
+                `;
+            } catch (error) {
+                document.getElementById('statsContainer').innerHTML = 'Error loading stats.';
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        async function loadSubmissions() {
+            try {
+                const response = await fetch('/api/submissions');
+                const submissions = await response.json();
+                const container = document.getElementById('submissionsContainer');
+                if (!submissions.length) {
+                    container.innerHTML = '<p>No submissions yet.</p>';
+                    return;
+                }
+                let html = '<table><thead><tr><th>ID</th><th>Scan Name</th><th>Status</th><th>Created At</th><th>Actions</th></tr></thead><tbody>';
+                submissions.forEach(sub => {
+                    html += `
+                        <tr>
+                            <td>${sub.id}</td>
+                            <td>${sub.scan_name}</td>
+                            <td>${sub.status}</td>
+                            <td>${new Date(sub.created_at).toLocaleString()}</td>
+                            <td>
+                                <a href="/processing/${sub.id}">Processing</a> | 
+                                <a href="/result/${sub.id}">Result</a>
+                            </td>
+                        </tr>`;
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (error) {
+                document.getElementById('submissionsContainer').innerHTML = 'Error loading submissions.';
+                console.error('Error fetching submissions:', error);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            loadStats();
+            loadSubmissions();
+        });
+    </script>
+</body>
+</html>

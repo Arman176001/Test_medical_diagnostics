@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Processing Result</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Import a clean, modern font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Use the Inter font family */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* A light gray background from Tailwind's palette */
+        }
+
+        /* A simple CSS spinner for the loading state */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main container card -->
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-lg overflow-hidden">
+        
+        <!-- Header Section -->
+        <div class="bg-gray-800 text-white p-6">
+            <h1 class="text-2xl font-bold">Scan Analysis Report</h1>
+            <p class="text-sm text-gray-300">Submission ID: <span id="submissionIdHeader">N/A</span></p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loader" class="flex flex-col items-center justify-center p-10">
+            <div class="spinner"></div>
+            <p class="mt-4 text-gray-600">Fetching analysis results...</p>
+        </div>
+
+        <!-- Result Content (hidden by default) -->
+        <div id="result" class="hidden">
+            <div class="p-6 md:p-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- Left Column: Scan Image -->
+                <div class="md:col-span-1">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-2">Scan Image</h2>
+                    <img id="scanImage" src="https://placehold.co/600x600/e2e8f0/475569?text=Scan+Image" alt="Scan Image" class="w-full h-auto rounded-lg border">
+                </div>
+
+                <!-- Right Column: Details -->
+                <div class="md:col-span-2">
+                    <!-- Patient & Scan Info -->
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-gray-700 mb-3">Submission Details</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <span class="font-medium text-gray-500 block">Scan Name</span>
+                                <span id="scanName" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-500 block">Modality</span>
+                                <span id="modality" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-500 block">Age</span>
+                                <span id="age" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-500 block">Sex</span>
+                                <span id="sex" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-500 block">Created At</span>
+                                <span id="createdAt" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analysis Results -->
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-700 mb-3">Analysis Results</h2>
+                        <div class="space-y-4">
+                            <!-- Status -->
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span class="font-medium text-gray-600">Final Status</span>
+                                <span id="status" class="px-3 py-1 text-sm font-semibold rounded-full">N/A</span>
+                            </div>
+                            <!-- Quality -->
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span class="font-medium text-gray-600">Image Quality</span>
+                                <span id="quality" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <!-- Scan Match -->
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span class="font-medium text-gray-600">Scan/Order Match</span>
+                                <span id="scanMatch" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <!-- Diagnosis -->
+                            <div class="p-3 bg-gray-50 rounded-lg">
+                                <span class="font-medium text-gray-600 block mb-1">Diagnosis</span>
+                                <p id="diagnosis" class="text-gray-800 text-sm">N/A</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Helper to retrieve the submission id from the URL path or query parameter.
+        function getSubmissionId() {
+            const urlParts = window.location.pathname.split('/');
+            // Find the first numeric part in the path, assuming it's the ID
+            const idFromPath = urlParts.find(part => /^\d+$/.test(part));
+            if (idFromPath) {
+                return idFromPath;
+            }
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id');
+        }
+
+        // Function to format date strings for better readability
+        function formatTimestamp(isoString) {
+            if (!isoString) return 'N/A';
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            } catch (e) {
+                return isoString; // Return original if formatting fails
+            }
+        }
+
+        const submissionId = getSubmissionId();
+        const loader = document.getElementById('loader');
+        const resultContainer = document.getElementById('result');
+
+        if (!submissionId) {
+            loader.innerHTML = '<p class="text-red-500 font-semibold">No Submission ID was provided in the URL.</p>';
+        } else {
+            // Set the ID in the header immediately
+            document.getElementById('submissionIdHeader').innerText = submissionId;
+
+            // Fetch data from the API
+            fetch(`/api/result/${submissionId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok (Status: ${response.status})`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // --- Populate Submission Details ---
+                    document.getElementById('scanName').innerText = data.scan_name || 'N/A';
+                    document.getElementById('modality').innerText = data.modality || 'N/A';
+                    document.getElementById('age').innerText = data.age || 'N/A';
+                    document.getElementById('sex').innerText = data.sex || 'N/A';
+                    document.getElementById('createdAt').innerText = formatTimestamp(data.created_at);
+                    document.getElementById('scanImage').src = data.image_url || 'https://placehold.co/600x600/e2e8f0/475569?text=Image+Not+Available';
+
+                    // --- Populate Analysis Results ---
+                    const statusEl = document.getElementById('status');
+                    statusEl.innerText = data.status || 'Unknown';
+                    
+                    // Apply color-coded styling for the status badge
+                    const status = (data.status || '').toLowerCase();
+                    if (status === 'accepted') {
+                        statusEl.className = 'px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800';
+                    } else if (status === 'rejected') {
+                        statusEl.className = 'px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800';
+                    } else {
+                        statusEl.className = 'px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800';
+                    }
+
+                    document.getElementById('quality').innerText = data.quality || 'N/A';
+                    // Convert boolean to a more readable format
+                    document.getElementById('scanMatch').innerText = typeof data.scan_match === 'boolean' ? (data.scan_match ? 'Yes' : 'No') : 'N/A';
+                    document.getElementById('diagnosis').innerText = data.diagnosis || 'No diagnosis was generated.';
+
+                    // Hide loader and show the result container
+                    loader.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    loader.innerHTML = `<p class="text-red-500 font-semibold text-center">Error loading results.<br><span class="text-sm text-gray-600 font-normal">${error.message}</span></p>`;
+                    console.error('Error fetching scan results:', error);
+                });
+        }
+    </script>
+</body>
+</html>

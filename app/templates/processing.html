@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Processing</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Import a clean, modern font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Use the Inter font family */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* A simple CSS spinner for the loading state */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border-left-color: #4f46e5; /* Indigo color */
+            animation: spin 1s ease infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main container card -->
+    <div class="w-full max-w-md bg-white rounded-xl shadow-lg text-center p-8">
+        
+        <!-- Loading State (visible by default) -->
+        <div id="loader">
+            <div class="spinner mx-auto"></div>
+            <h1 class="text-2xl font-bold text-gray-800 mt-6">Processing Scan</h1>
+            <p class="text-gray-500 mt-2">Please wait while we analyze your submission. This may take a moment.</p>
+        </div>
+
+        <!-- Result State (hidden by default) -->
+        <div id="result" class="hidden">
+            <svg class="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-800 mt-5">Processing Complete</h1>
+            <p class="text-gray-500 mt-2">Your scan has been successfully analyzed.</p>
+            <button onclick="viewResults()" class="mt-6 w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200">
+                View Full Report
+            </button>
+        </div>
+
+        <!-- Error State (hidden by default) -->
+        <div id="error" class="hidden">
+             <svg class="mx-auto h-16 w-16 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h1 class="text-2xl font-bold text-gray-800 mt-5">An Error Occurred</h1>
+            <p id="errorMessage" class="text-gray-500 mt-2">Could not retrieve processing status.</p>
+        </div>
+    </div>
+    
+    <script>
+        // Helper to retrieve the submission id from the URL path or query parameter.
+        function getSubmissionId() {
+            const urlParts = window.location.pathname.split('/');
+            const idFromPath = urlParts.find(part => /^\d+$/.test(part));
+            if (idFromPath) return idFromPath;
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id');
+        }
+
+        // Redirects to the detailed results page
+        function viewResults() {
+            const submissionId = getSubmissionId();
+            if (submissionId) {
+                window.location.href = `/results/${submissionId}`;
+            }
+        }
+
+        const submissionId = getSubmissionId();
+        const loader = document.getElementById('loader');
+        const resultContainer = document.getElementById('result');
+        const errorContainer = document.getElementById('error');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let pollCount = 0;
+        const maxPolls = 20; // Stop polling after 1 minute (20 * 3s) to prevent infinite loops
+
+        async function pollStatus() {
+            if (!submissionId) {
+                loader.style.display = 'none';
+                errorMessage.innerText = 'No Submission ID was provided in the URL.';
+                errorContainer.style.display = 'block';
+                return;
+            }
+
+            if (pollCount >= maxPolls) {
+                loader.style.display = 'none';
+                errorMessage.innerText = 'Polling timed out. Please check the results page later.';
+                errorContainer.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/result/${submissionId}`);
+                
+                if (!response.ok) {
+                    // Handle cases like 404 Not Found
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // *** FIX: Check if status is NOT 'pending' anymore. ***
+                // Any other status ('ACCEPTED', 'REJECTED') means processing is done.
+                if (data && data.status && data.status.toLowerCase() !== 'pending') {
+                    loader.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                } else {
+                    // Continue polling every 3 seconds
+                    pollCount++;
+                    setTimeout(pollStatus, 3000);
+                }
+            } catch (error) {
+                console.error('Error polling scan result:', error);
+                // Stop polling on error to avoid spamming a broken endpoint
+                loader.style.display = 'none';
+                errorMessage.innerText = 'Could not retrieve processing status. Please try again later.';
+                errorContainer.style.display = 'block';
+            }
+        }
+        
+        // Start polling when the page loads
+        window.addEventListener('load', pollStatus);
+    </script>
+</body>
+</html>

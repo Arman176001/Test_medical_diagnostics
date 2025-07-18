@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+supabase
+postgrest
+google-cloud-storage
+langchain-openai
+pydantic
+python-decouple
+gunicorn
+pydantic_settings
+Pillow
+google-generativeai
+gradio_client
