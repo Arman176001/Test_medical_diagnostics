@@ -11,7 +11,6 @@ class Settings():
     # GCP Settings
     GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID')
     GCP_BUCKET_NAME = os.getenv('GCP_BUCKET_NAME')
-    GCP_CREDENTIALS_PATH = os.getenv('GCP_CREDENTIALS_PATH')
     
     # LLM Settings
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')

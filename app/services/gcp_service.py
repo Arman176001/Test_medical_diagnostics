@@ -10,15 +10,9 @@ from app.config import settings
 class GCPStorageService:
     def __init__(self):
         # Priority: explicit file path > base64 env var > default credentials
-        creds_path = settings.GCP_CREDENTIALS_PATH
         creds_b64 = os.environ.get('GCP_CREDENTIALS_BASE64')
 
-        if creds_path:
-            # Load from file path (local dev)
-            credentials = service_account.Credentials.from_service_account_file(
-                creds_path
-            )
-        elif creds_b64:
+        if creds_b64:
             # Decode base64 service account JSON (for Vercel deployment)
             decoded = base64.b64decode(creds_b64).decode('utf-8')
             creds_dict = json.loads(decoded)
