@@ -87,7 +87,6 @@ async def process_scan(submission_id: int):
         
         # Process with LLM
         order_details = {
-            "patient_id": submission.get('patient_id'),
             "scan_name": submission['scan_name'],
             "modality": submission['modality'],
             "age": submission['age'],
@@ -96,17 +95,17 @@ async def process_scan(submission_id: int):
 
         # Measure the processing time for the analysis
         start_time = time.time()
-
+        image_path=submission['image_url'],
         # Call the function with the correct arguments
         llm_result = llm_service.analyze_scan(
-            image_path=submission['image_url'],
+            image_path=image_path,
             order_details=order_details
         )
 
         processing_time = time.time() - start_time
         
         # Save result
-        await supabase_service.save_result(submission_id, llm_result, processing_time)
+        await supabase_service.save_result(submission_id, image_path, llm_result, processing_time)
         
         # Update submission status
         await supabase_service.update_submission_status(submission_id, "completed")

@@ -34,7 +34,6 @@ class SupabaseDB:
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
             -- Patient and Scan Details from the Report
-            patient_id VARCHAR(255),
             scan_name TEXT,
             image_path TEXT,
             age INTEGER,
@@ -96,11 +95,10 @@ class SupabaseDB:
         return result.data
     
     # Result operations
-    def create_result(self, submission_id: int, patient_id: str, scan_name: str, image_path: str, age: int, sex: str, status: str, quality: str, scan_match: bool, modality: str, diagnosis: str, processing_time: float) -> Dict[str, Any]:
+    def create_result(self, submission_id: int, scan_name: str, image_path: str, age: int, sex: str, status: str, quality: str, scan_match: bool, modality: str, diagnosis: str, processing_time: float) -> Dict[str, Any]:
 
         data = {
             'submission_id': submission_id,
-            'patient_id': patient_id,
             'scan_name': scan_name,
             'image_path': image_path,
             'age': age,

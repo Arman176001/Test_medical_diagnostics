@@ -37,16 +37,15 @@ class SupabaseService:
         except Exception as e:
             raise Exception(f"Error updating submission status: {str(e)}")
     
-    async def save_result(self, submission_id: int, llm_result: Dict[str, Any],processing_time: float) -> Dict[str, Any]:
+    async def save_result(self, submission_id: int,image_path: str, llm_result: Dict[str, Any],processing_time: float) -> Dict[str, Any]:
 
         try:
             # Pass the report values directly to the database creation method.
             # This assumes your 'create_result' method and table schema accept these arguments.
             result = self.db.create_result(
                 submission_id=submission_id,
-                patient_id=llm_result.get("patient_id"),
                 scan_name=llm_result.get("scan_name"),
-                image_path=llm_result.get("image_path"),
+                image_path=image_path,
                 age=llm_result.get("age"),
                 sex=llm_result.get("sex"),
                 status=llm_result.get("status"),

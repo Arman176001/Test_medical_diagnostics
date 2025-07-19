@@ -72,40 +72,47 @@ class MedicalLLMService:
         system_prompt = """
         YOU ARE A RADIOLOGY AI. YOUR JOB IS TO ANALYZE A MEDICAL IMAGE AND RETURN A STRUCTURED REPORT BASED ON ITS CONTENT.
 
-        ## INPUTS:
-        - A SCAN IMAGE
-        - ORDER DETAILS: {"scan_name": "...", "modality": "...", "age": "...", "sex": "...", "patient_id": "..."}
+        User will provide:  
+            - ordered_scan: {"scan_name": "...", "modality": "...", "age": "...", "sex": "..."}
+            - scan_file: (image file)  
 
-        ## YOUR TASK:
-        1.  **DETECT MODALITY**: Identify the modality shown in the image (e.g., CT, MRI, X-ray, Ultrasound).
-        2.  **DETECT ANATOMICAL REGION**: Identify the main anatomical region visible.
-        3.  **COMPARE TO ORDER**: Set `"scan_match"` to `true` ONLY if both the detected modality AND anatomical region from the image match the provided order details. Otherwise, set it to `false`.
-        4.  **WRITE DIAGNOSIS**:
-            * Describe only what is visible in the image.
-            * Include descriptions of normal and any abnormal findings.
-            * Crucially, DO NOT mention the patient's age, sex, image quality, or clinical history in the diagnosis field.
+        TASKS:  
+        1. Fetch scan_name from ordered_scan.  
+        2. Compare actual vs expected:
+        - If body_part shown in the image matches the scan_name then scan_match = True
+        - Otherwise → scan_match = False  
+        
+        3.  **WRITE DIAGNOSIS**:
+                    * Describe only what is visible in the image.
+                    * Include descriptions of normal and any abnormal findings.
+                    * Crucially, DO NOT mention the patient's age, sex, image quality, or clinical history in the diagnosis field.
 
         ## OUTPUT FORMAT (STRICT JSON):
         {
-          "patient_id": "...",
           "scan_name": "...",
           "age": "...",
           "sex": "...",
-          "scan_match": true,
+          "scan_match": True/False,
           "modality": "...",
           "diagnosis": "..."
         }
+
         """
+        user_data_prompt = f"ordered_scan: {json.dumps(order_details)}"
         try:
             messages = [
                 {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": system_prompt},
+                        {"type": "text", "text": user_data_prompt},
                         {"type": "image_url", "image_url": {"url": image_path}}
                     ]
                 }
-            ]   
+            ]         
             
             # The method returns a response object, not a string
             response_object = self.diagnostic_client.chat.completions.create(
@@ -156,7 +163,12 @@ class MedicalLLMService:
         """
         try:
             img = Image.open(image_path)
-            response = self.quality_model.generate_content([system_prompt, img])
+            config = {
+                        "image_config": {
+                            "resize_mode": "NONE"  # Options are "ANY" (default) or "NONE"
+                        }
+                    }
+            response = self.quality_model.generate_content([system_prompt, img],generation_config=config)
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
@@ -173,7 +185,7 @@ class MedicalLLMService:
 
         Args:
             image_path: The local file path or URL to the scan image.
-            order_details: A dictionary with patient_id, scan_name, modality, age, and sex.
+            order_details: A dictionary with scan_name, modality, age, and sex.
 
         Returns:
             A consolidated JSON report with the final status.
@@ -217,14 +229,13 @@ class MedicalLLMService:
             }
             
         final_report = {
-            "patient_id": order_details.get("patient_id"),
             "scan_name": order_details.get("scan_name"),
             "age": order_details.get("age"),
             "sex": order_details.get("sex"),
             "status": "PENDING", # Will be updated below
             "quality": quality_result.get("quality", "Bad"),
             "scan_match": diagnosis_result.get("scan_match", False),
-            "modality": diagnosis_result.get("modality", "Unknown"),
+            "modality": order_details.get("modality", "Unknown"),
             "diagnosis": diagnosis_result.get("diagnosis", "No diagnosis could be generated.")
         }
 
@@ -248,7 +259,6 @@ if __name__ == '__main__':
 
         # Example order details
         order_details = {
-            "patient_id": "PID-12345",
             "scan_name": "CT Head",
             "modality": "CT",
             "age": "45",
@@ -260,7 +270,6 @@ if __name__ == '__main__':
         # The model will likely fail the "scan_match" which demonstrates the rejection logic.
         image_file_path = 'https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png'
         
-        print(f"Analyzing scan for patient: {order_details['patient_id']}")
         print(f"Image path: {image_file_path}\n")
 
         # Run the analysis
@@ -275,7 +284,6 @@ if __name__ == '__main__':
         # try:
         #     chest_xray_path = "path/to/your/chest_xray.jpg"
         #     chest_order = {
-        #         "patient_id": "PID-67890",
         #         "scan_name": "Chest X-ray",
         #         "modality": "X-ray",
         #         "age": "62",
