@@ -105,7 +105,7 @@ async def process_scan(submission_id: int):
         processing_time = time.time() - start_time
         
         # Save result
-        await supabase_service.save_result(submission_id, image_path, llm_result, processing_time)
+        await supabase_service.save_result(submission_id, image_path[0], llm_result, processing_time)
         
         # Update submission status
         await supabase_service.update_submission_status(submission_id, "completed")
@@ -188,4 +188,4 @@ async def dashboard(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

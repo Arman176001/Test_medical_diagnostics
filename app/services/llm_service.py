@@ -27,6 +27,8 @@ def _download_image_to_tempfile(image_path: str) -> str:
     Downloads an image from a URL and saves it to a temporary local file.
     This is necessary for any analysis function that cannot read from a URL directly.
     """
+    if isinstance(image_path, tuple):
+        image_path = image_path[0]
     try:
         response = requests.get(image_path, stream=True)
         response.raise_for_status()  # Raise an exception for bad status codes
@@ -109,7 +111,7 @@ class MedicalLLMService:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": user_data_prompt},
-                        {"type": "image_url", "image_url": {"url": image_path}}
+                        {"type": "image_url", "image_url": {"url": image_path[0]}}
                     ]
                 }
             ]         
@@ -133,7 +135,7 @@ class MedicalLLMService:
             print(f"Error in diagnostic analysis: {e}")
             return {"error": f"Failed to get diagnostic analysis: {e}"}
 
-    def _assess_image_quality(self, image_path: str) -> dict:
+    def _assess_image_quality(self, image_path: str, order_details : dict) -> dict:
         """
         Calls the Gemini model (API 2) to assess the image quality.
 
@@ -148,6 +150,7 @@ class MedicalLLMService:
 
         ## INPUT:
         - A MEDICAL SCAN IMAGE
+        - NAME OF THE SCAN
 
         ## YOUR TASK:
         1.  **ANALYZE IMAGE QUALITY**: Carefully examine the image for clarity, artifacts, blur, and noise.
@@ -163,12 +166,7 @@ class MedicalLLMService:
         """
         try:
             img = Image.open(image_path)
-            config = {
-                        "image_config": {
-                            "resize_mode": "NONE"  # Options are "ANY" (default) or "NONE"
-                        }
-                    }
-            response = self.quality_model.generate_content([system_prompt, img],generation_config=config)
+            response = self.quality_model.generate_content([system_prompt, img],contents = order_details["scan_name"])
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
@@ -208,7 +206,7 @@ class MedicalLLMService:
                 future_diagnosis = executor.submit(self._analyze_diagnosis_and_match, image_path, order_details)
                 
                 # The quality assessment function gets the temporary local file path to prevent errors.
-                future_quality = executor.submit(self._assess_image_quality, local_image_path)
+                future_quality = executor.submit(self._assess_image_quality, local_image_path, order_details)
 
                 # Retrieve results from both concurrent tasks
                 diagnosis_result = future_diagnosis.result()

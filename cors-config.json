@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["https://test-medical-diagnostics.onrender.com"],
+    "origin": ["https://test-medical-diagnostics.onrender.com","http://127.0.0.1:8000/"],
     "method": ["PUT", "OPTIONS"],
     "responseHeader": ["Content-Type"],
     "maxAgeSeconds": 3600
