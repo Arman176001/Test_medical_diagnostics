@@ -166,7 +166,7 @@ class MedicalLLMService:
         """
         try:
             img = Image.open(image_path)
-            response = self.quality_model.generate_content([system_prompt, img],contents = order_details["scan_name"])
+            response = self.quality_model.generate_content([system_prompt, img, f"Scan name: {order_details['scan_name']}"] )
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
