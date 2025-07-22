@@ -60,7 +60,7 @@ class MedicalLLMService:
             
         # Initialize the client to interact with the MedGemma model
         self.diagnostic_client = InferenceClient(
-            model="google/medgemma-4b-it",
+            provider="featherless-ai",
             token=hf_token,
         )
 
