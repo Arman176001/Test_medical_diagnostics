@@ -146,22 +146,29 @@ class MedicalLLMService:
             A dictionary with the quality assessment, or an error dict.
         """
         system_prompt = """
-        YOU ARE AN AI SPECIALIZED IN MEDICAL IMAGE QUALITY ASSESSMENT.
+        # MEDICAL IMAGE QUALITY ASSESSMENT AI
 
         ## INPUT:
         - A MEDICAL SCAN IMAGE
         - NAME OF THE SCAN
 
         ## YOUR TASK:
-        1.  **ANALYZE IMAGE QUALITY**: Carefully examine the image for clarity, artifacts, blur, and noise.
-        2.  **ASSIGN QUALITY RATING**:
-            * `"Optimal"`: The image is clear, sharp, with no artifacts or blur.
-            * `"Sub-optimal"`: The image has minor issues (e.g., slight noise, small anatomical cut-offs, mild motion blur) but is still diagnostically useful.
-            * `"Bad"`: The image is unreadable, has heavy artifacts, is severely blurred, or critical structures are missing, making it unsuitable for diagnosis.
+        1. **ANALYZE IMAGE QUALITY**: Examine the image for diagnostic utility and technical adequacy.
+        2. **ASSIGN QUALITY RATING**:
+        * `"Optimal"`: The image is clear, sharp, with minimal artifacts. Excellent diagnostic quality.
+        * `"Sub-optimal"`: The image has some technical limitations (mild noise, minor positioning issues, slight blur, partial anatomical coverage) BUT remains **diagnostically adequate** for clinical interpretation and decision-making.
+        * `"Bad"`: The image is fundamentally compromised - severe artifacts, major blur, critical anatomical structures completely obscured, or technical failures that make diagnostic interpretation unreliable or impossible.
+
+        ## ASSESSMENT GUIDELINES:
+        - **Prioritize diagnostic utility over technical perfection**
+        - Minor imperfections are acceptable if key anatomical structures are visible
+        - Consider the clinical context - some scans are inherently more challenging
+        - Focus on whether a radiologist could make meaningful diagnostic assessments
+        - Only rate as "Bad" if the image would require a complete retake
 
         ## OUTPUT FORMAT (STRICT JSON):
         {
-          "quality": "Optimal"
+        "quality": "Sub-optimal"
         }
         """
         try:
