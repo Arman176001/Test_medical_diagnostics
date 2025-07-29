@@ -136,7 +136,6 @@ class MedicalLLMService:
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
-            print(json_part)
             return json.loads(json_part)
 
         except Exception as e:
