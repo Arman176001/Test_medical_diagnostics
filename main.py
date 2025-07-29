@@ -5,11 +5,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.services.gcp_service import gcp_service
 from app.services.llm_service import llm_service
 from app.services.supabase_service import supabase_service
-from app.models.supabase_db import db
-from app.config import settings
 import uuid
 import time
-from datetime import datetime
 from pydantic import BaseModel
 
 class UploadURLRequest(BaseModel):
@@ -95,7 +92,7 @@ async def process_scan(submission_id: int):
 
         # Measure the processing time for the analysis
         start_time = time.time()
-        image_path=submission['image_url'],
+        image_path=submission['image_url']
         # Call the function with the correct arguments
         llm_result = llm_service.analyze_scan(
             image_path=image_path,
@@ -105,7 +102,7 @@ async def process_scan(submission_id: int):
         processing_time = time.time() - start_time
         
         # Save result
-        await supabase_service.save_result(submission_id, image_path[0], llm_result, processing_time)
+        await supabase_service.save_result(submission_id, image_path, llm_result, processing_time)
         
         # Update submission status
         await supabase_service.update_submission_status(submission_id, "completed")
@@ -117,38 +114,41 @@ async def process_scan(submission_id: int):
 
 @app.get("/api/result/{submission_id}")
 async def get_result(submission_id: int):
-    """Get processing result"""
+    """Get processing result with updated fields"""
     try:
+        # Assume supabase_service.get_submission_with_result fetches submission and its related result
         data = await supabase_service.get_submission_with_result(submission_id)
         if not data:
             raise HTTPException(status_code=404, detail="Submission not found")
         
         response_data = {
-            "submission_id": data['id'],
-            "status": data['status'],
-            "scan_name": data['scan_name'],
-            "modality": data['modality'],
-            "age": data['age'],
-            "sex": data['sex'],
-            "image_url": data['image_url'],
-            "created_at": data['created_at']
+            "submission_id": data.get('id'),
+            "status": data.get('status'),
+            "scan_name": data.get('scan_name'),
+            "modality": data.get('modality'),
+            "age": data.get('age'),
+            "sex": data.get('sex'),
+            "image_url": data.get('image_url'),
+            "created_at": data.get('created_at')
         }
 
         if data.get('results') and len(data['results']) > 0:
             result = data['results'][0]
             
             response_data.update({
-                "status": result['status'],
-                "quality": result['quality'],
-                "scan_match": result['scan_match'],
-                "diagnosis": result['diagnosis'],
-                "processing_time": result['processing_time'],
+                "status": result.get('status'),
+                "quality": result.get('quality'),
+                "scan_match": result.get('scan_match'),
+                "modality_match": result.get('modality_match'), 
+                "reason_of_rejection": result.get('reason_of_rejection'), 
+                "diagnosis": result.get('diagnosis'),
+                "processing_time": result.get('processing_time')
             })
         
         return JSONResponse(content=response_data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
 
 @app.get("/api/submissions")
 async def get_submissions(limit: int = 100):

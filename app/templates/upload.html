@@ -9,9 +9,13 @@
         input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
         .upload-area { border: 2px dashed #ddd; padding: 20px; text-align: center; margin: 10px 0; }
         .progress { width: 100%; background-color: #f0f0f0; border-radius: 4px; margin: 10px 0; }
         .progress-bar { height: 20px; background-color: #007bff; border-radius: 4px; width: 0%; transition: width 0.3s; }
+        .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .status-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
     </style>
 </head>
 <body>
@@ -55,7 +59,9 @@
             <div class="progress-bar" id="progressBar"></div>
         </div>
         
-        <button type="submit">Upload and Process</button>
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+        
+        <button type="submit" id="submitBtn">Upload and Process</button>
     </form>
 
     <script>
@@ -64,18 +70,23 @@
             
             const formData = new FormData(this);
             const file = document.getElementById('imageFile').files[0];
+            const submitBtn = document.getElementById('submitBtn');
+            const statusMessage = document.getElementById('statusMessage');
             
             if (!file) {
-                alert('Please select a file');
+                showStatus('Please select a file', 'error');
                 return;
             }
             
             try {
-                // Show progress
+                // Disable submit button and show progress
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Uploading...';
                 document.getElementById('progressContainer').style.display = 'block';
-                document.getElementById('progressBar').style.width = '25%';
+                document.getElementById('progressBar').style.width = '10%';
                 
                 // Get upload URL
+                showStatus('Generating upload URL...', 'success');
                 const uploadUrlResponse = await fetch('/api/generate-upload-url', {
                     method: 'POST',
                     headers: {
@@ -87,11 +98,16 @@
                     })
                 });
                 
+                if (!uploadUrlResponse.ok) {
+                    throw new Error(`Failed to generate upload URL: ${uploadUrlResponse.status}`);
+                }
+                
                 const uploadData = await uploadUrlResponse.json();
-                document.getElementById('progressBar').style.width = '50%';
+                document.getElementById('progressBar').style.width = '30%';
                 
                 // Upload to GCP
-                await fetch(uploadData.upload_url, {
+                showStatus('Uploading file to cloud storage...', 'success');
+                const uploadResponse = await fetch(uploadData.upload_url, {
                     method: 'PUT',
                     body: file,
                     headers: {
@@ -99,9 +115,14 @@
                     }
                 });
                 
-                document.getElementById('progressBar').style.width = '75%';
+                if (!uploadResponse.ok) {
+                    throw new Error(`File upload failed: ${uploadResponse.status}`);
+                }
                 
-                // Submit for processing
+                document.getElementById('progressBar').style.width = '60%';
+                
+                // Submit for processing (this should return immediately)
+                showStatus('Submitting for processing...', 'success');
                 const submitData = new FormData();
                 submitData.append('scan_name', formData.get('scan_name'));
                 submitData.append('modality', formData.get('modality'));
@@ -115,18 +136,38 @@
                     body: submitData
                 });
                 
+                if (!submitResponse.ok) {
+                    throw new Error(`Submission failed: ${submitResponse.status}`);
+                }
+                
                 const result = await submitResponse.json();
                 document.getElementById('progressBar').style.width = '100%';
                 
-                // Redirect to processing page
-                window.location.href = `/processing/${result.submission_id}`;
+                // Show success message briefly before redirect
+                showStatus('Scan submitted successfully! Redirecting to processing page...', 'success');
+                
+                // Redirect immediately after successful submission
+                setTimeout(() => {
+                    window.location.href = `/processing/${result.submission_id}`;
+                }, 1000); // Small delay to show success message
                 
             } catch (error) {
                 console.error('Error:', error);
-                alert('Upload failed. Please try again.');
+                showStatus(`Upload failed: ${error.message}. Please try again.`, 'error');
+                
+                // Reset form state
                 document.getElementById('progressContainer').style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload and Process';
             }
         });
+        
+        function showStatus(message, type) {
+            const statusMessage = document.getElementById('statusMessage');
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message status-${type}`;
+            statusMessage.style.display = 'block';
+        }
     </script>
 </body>
 </html>

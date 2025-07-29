@@ -4,9 +4,9 @@ import concurrent.futures
 import tempfile
 from PIL import Image
 import google.generativeai as genai
-from gradio_client import Client, handle_file
 import requests
 from app.config import settings
+import time
 from huggingface_hub import InferenceClient
 # --- Configuration ---
 # It's recommended to set your Gemini API key as an environment variable
@@ -27,8 +27,6 @@ def _download_image_to_tempfile(image_path: str) -> str:
     Downloads an image from a URL and saves it to a temporary local file.
     This is necessary for any analysis function that cannot read from a URL directly.
     """
-    if isinstance(image_path, tuple):
-        image_path = image_path[0]
     try:
         response = requests.get(image_path, stream=True)
         response.raise_for_status()  # Raise an exception for bad status codes
@@ -68,38 +66,9 @@ class MedicalLLMService:
         self.quality_model = genai.GenerativeModel('gemini-2.5-flash')
 
     def _analyze_diagnosis_and_match(self, image_path: str, order_details: dict) -> dict:
-        if not self.diagnostic_client:
-            return {"error": "Diagnostic client not initialized."}
-
-        system_prompt = """
-        YOU ARE A RADIOLOGY AI. YOUR JOB IS TO ANALYZE A MEDICAL IMAGE AND RETURN A STRUCTURED REPORT BASED ON ITS CONTENT.
-
-        User will provide:  
-            - ordered_scan: {"scan_name": "...", "modality": "...", "age": "...", "sex": "..."}
-            - scan_file: (image file)  
-
-        TASKS:  
-        1. Fetch scan_name from ordered_scan.  
-        2. Compare actual vs expected:
-        - If body_part shown in the image matches the scan_name then scan_match = True
-        - Otherwise → scan_match = False  
-        
-        3.  **WRITE DIAGNOSIS**:
-                    * Describe only what is visible in the image.
-                    * Include descriptions of normal and any abnormal findings.
-                    * Crucially, DO NOT mention the patient's age, sex, image quality, or clinical history in the diagnosis field.
-
-        ## OUTPUT FORMAT (STRICT JSON):
-        {
-          "scan_name": "...",
-          "age": "...",
-          "sex": "...",
-          "scan_match": True/False,
-          "modality": "...",
-          "diagnosis": "..."
-        }
-
-        """
+        with open("app/services/MedgemmaPromptV5.txt",'r',encoding='utf-8') as f:
+            system_prompt = f.read()
+            
         user_data_prompt = f"ordered_scan: {json.dumps(order_details)}"
         try:
             messages = [
@@ -111,72 +80,63 @@ class MedicalLLMService:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": user_data_prompt},
-                        {"type": "image_url", "image_url": {"url": image_path[0]}}
+                        {"type": "image_url", "image_url": {"url": image_path}}
                     ]
                 }
-            ]         
-            
+            ]   
+            payload = {
+                    "input": {
+                        "model": "google/medgemma-4b-it",
+                        "messages": messages,
+                        "max_tokens": 2048,
+                    }
+                }      
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {settings.LLM_API}'
+            }
             # The method returns a response object, not a string
-            response_object = self.diagnostic_client.chat.completions.create(
-                model="google/medgemma-4b-it",
-                messages=messages,
-                max_tokens=1024,
-            )
+            response_object = requests.post(settings.LLM_BASE_URL + 'run',headers=headers,json=payload)
+            job_id = response_object.json()['id']
+            """Poll RunPod for job completion"""
             
-            # --- FIX APPLIED HERE ---
-            # Extract the string content from the response object
-            result_str = response_object.choices[0].message.content
+            headers = {
+                'Authorization': f'Bearer {settings.LLM_API}'
+            }
             
-            # Now you can safely clean the response string to extract the JSON part
-            json_part = result_str.split('```json\n')[-1].split('\n```')[0]
-            return json.loads(json_part)
+            while True:
+                response = requests.get(settings.LLM_BASE_URL + f'status/{job_id}', headers=headers)
+                result = response.json()
+                
+                status = result.get('status')
+                
+                if status == 'COMPLETED':
+                    result_str = result.get('output')[0]['choices'][0]['tokens'][0]
+                    json_part = result_str.split('```json\n')[-1].split('\n```')[0]
+                    return json.loads(json_part)
+                elif status == 'FAILED':
+                    raise Exception(f"Job failed: {result}")
+                elif status in ['IN_QUEUE', 'IN_PROGRESS']:
+                    print(f"Status: {status}, waiting...")
+                    time.sleep(2)  # Wait 2 seconds before checking again
+                else:
+                    raise Exception(f"Unknown status: {status}")
 
         except Exception as e:
             print(f"Error in diagnostic analysis: {e}")
             return {"error": f"Failed to get diagnostic analysis: {e}"}
 
     def _assess_image_quality(self, image_path: str, order_details : dict) -> dict:
-        """
-        Calls the Gemini model (API 2) to assess the image quality.
 
-        Args:
-            image_path: The local file path to the scan image.
-
-        Returns:
-            A dictionary with the quality assessment, or an error dict.
-        """
-        system_prompt = """
-        # MEDICAL IMAGE QUALITY ASSESSMENT AI
-
-        ## INPUT:
-        - A MEDICAL SCAN IMAGE
-        - NAME OF THE SCAN
-
-        ## YOUR TASK:
-        1. **ANALYZE IMAGE QUALITY**: Examine the image for diagnostic utility and technical adequacy.
-        2. **ASSIGN QUALITY RATING**:
-        * `"Optimal"`: The image is clear, sharp, with minimal artifacts. Excellent diagnostic quality.
-        * `"Sub-optimal"`: The image has some technical limitations (mild noise, minor positioning issues, slight blur, partial anatomical coverage) BUT remains **diagnostically adequate** for clinical interpretation and decision-making.
-        * `"Bad"`: The image is fundamentally compromised - severe artifacts, major blur, critical anatomical structures completely obscured, or technical failures that make diagnostic interpretation unreliable or impossible.
-
-        ## ASSESSMENT GUIDELINES:
-        - **Prioritize diagnostic utility over technical perfection**
-        - Minor imperfections are acceptable if key anatomical structures are visible
-        - Consider the clinical context - some scans are inherently more challenging
-        - Focus on whether a radiologist could make meaningful diagnostic assessments
-        - Only rate as "Bad" if the image would require a complete retake
-
-        ## OUTPUT FORMAT (STRICT JSON):
-        {
-        "quality": "Sub-optimal"
-        }
-        """
+        with open("app/services/SystemPromptV8.txt", "r",encoding='utf-8') as f:
+            system_prompt = f.read()
         try:
             img = Image.open(image_path)
-            response = self.quality_model.generate_content([system_prompt, img, f"Scan name: {order_details['scan_name']}"] )
+            response = self.quality_model.generate_content([system_prompt, img, f"ordered_scan: {order_details}"] )
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
+            print(json_part)
             return json.loads(json_part)
 
         except Exception as e:
@@ -184,17 +144,7 @@ class MedicalLLMService:
             return {"error": f"Failed to get quality assessment: {e}"}
 
     def analyze_scan(self, image_path: str, order_details: dict) -> dict:
-        """
-        Performs a full analysis of a medical scan by running diagnostic and
-        quality checks in parallel and combining the results.
 
-        Args:
-            image_path: The local file path or URL to the scan image.
-            order_details: A dictionary with scan_name, modality, age, and sex.
-
-        Returns:
-            A consolidated JSON report with the final status.
-        """
         local_image_path = _download_image_to_tempfile(image_path)
     
         if not local_image_path:
@@ -237,14 +187,16 @@ class MedicalLLMService:
             "scan_name": order_details.get("scan_name"),
             "age": order_details.get("age"),
             "sex": order_details.get("sex"),
-            "status": "PENDING", # Will be updated below
-            "quality": quality_result.get("quality", "Bad"),
-            "scan_match": diagnosis_result.get("scan_match", False),
             "modality": order_details.get("modality", "Unknown"),
-            "diagnosis": diagnosis_result.get("diagnosis", "No diagnosis could be generated.")
+            "quality": quality_result.get("image_quality", "rejected"),
+            "scan_match": quality_result.get("scan_match", False),
+            "modality_match":quality_result.get("modality_match",False),
+            "reason_of_rejection":quality_result.get("reason_of_rejection","null"),
+            "diagnosis": diagnosis_result.get("diagnosis", "No diagnosis could be generated."),
+            "status": "PENDING", # Will be updated below
         }
 
-        if not final_report["scan_match"] or final_report["quality"] == "Bad":
+        if not final_report["scan_match"] or not final_report["modality_match"] or final_report["quality"] == "rejected":
             final_report["status"] = "REJECTED"
         else:
             final_report["status"] = "ACCEPTED"

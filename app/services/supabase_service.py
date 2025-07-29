@@ -1,7 +1,6 @@
 import logging
 from app.models.supabase_db import db
 from typing import Dict, Any, Optional, List
-import json
 
 class SupabaseService:
     def __init__(self):
@@ -48,11 +47,13 @@ class SupabaseService:
                 image_path=image_path,
                 age=llm_result.get("age"),
                 sex=llm_result.get("sex"),
-                status=llm_result.get("status"),
+                modality=llm_result.get("modality"),
                 quality=llm_result.get("quality"),
                 scan_match=llm_result.get("scan_match"),
-                modality=llm_result.get("modality"),
+                modality_match=llm_result.get("modality_match"),
+                reason_of_rejection=llm_result.get("reason_of_rejection"),
                 diagnosis=llm_result.get("diagnosis"),
+                status=llm_result.get("status"),
                 processing_time=processing_time  # Assumes you have this column in your table
             )
             return result

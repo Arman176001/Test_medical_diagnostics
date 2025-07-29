@@ -14,8 +14,8 @@ class Settings():
     
     # LLM Settings
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-    LLM_BASE_URL= "https://api.featherless.ai/v1"
-    LLM_MODEL = "google/medgemma-4b-it"
+    LLM_BASE_URL= 'https://api.runpod.ai/v2/w4hvwcy27mmkog/'
+    LLM_API = os.getenv('RUNPOD_API_KEY')
     
     # App Settings
     SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key')

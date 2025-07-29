@@ -95,7 +95,7 @@ class SupabaseDB:
         return result.data
     
     # Result operations
-    def create_result(self, submission_id: int, scan_name: str, image_path: str, age: int, sex: str, status: str, quality: str, scan_match: bool, modality: str, diagnosis: str, processing_time: float) -> Dict[str, Any]:
+    def create_result(self, submission_id: int, scan_name: str, image_path: str, age: int, sex: str,modality:str, quality: str, scan_match: bool, modality_match: bool,reason_of_rejection:str, diagnosis: str,status: str, processing_time: float) -> Dict[str, Any]:
 
         data = {
             'submission_id': submission_id,
@@ -103,11 +103,13 @@ class SupabaseDB:
             'image_path': image_path,
             'age': age,
             'sex': sex,
-            'status': status,
+            'modality': modality,
             'quality': quality,
             'scan_match': scan_match,
-            'modality': modality,
+            'modality_match': modality_match,
+            'reason_of_rejection': reason_of_rejection,
             'diagnosis': diagnosis,
+            'status': status,
             'processing_time': processing_time
         }
         

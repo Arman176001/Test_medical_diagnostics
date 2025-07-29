@@ -90,6 +90,10 @@
                                 <span class="font-medium text-gray-500 block">Created At</span>
                                 <span id="createdAt" class="font-semibold text-gray-800">N/A</span>
                             </div>
+                            <div>
+                                <span class="font-medium text-gray-500 block">Processing Time</span>
+                                <span id="processingTime" class="font-semibold text-gray-800">N/A</span>
+                            </div>
                         </div>
                     </div>
 
@@ -111,6 +115,16 @@
                             <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                 <span class="font-medium text-gray-600">Scan/Order Match</span>
                                 <span id="scanMatch" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <!-- Modality Match -->
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span class="font-medium text-gray-600">Modality Match</span>
+                                <span id="modalityMatch" class="font-semibold text-gray-800">N/A</span>
+                            </div>
+                            <!-- Reason of Rejection (only shown if status is rejected) -->
+                            <div id="rejectionReasonContainer" class="p-3 bg-red-50 rounded-lg border border-red-200 hidden">
+                                <span class="font-medium text-red-700 block mb-1">Reason for Rejection</span>
+                                <p id="reasonOfRejection" class="text-red-800 text-sm">N/A</p>
                             </div>
                             <!-- Diagnosis -->
                             <div class="p-3 bg-gray-50 rounded-lg">
@@ -155,6 +169,20 @@
             }
         }
 
+        // Function to format processing time
+        function formatProcessingTime(seconds) {
+            if (!seconds && seconds !== 0) return 'N/A';
+            if (seconds < 1) {
+                return `${Math.round(seconds * 1000)}ms`;
+            } else if (seconds < 60) {
+                return `${seconds.toFixed(2)}s`;
+            } else {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = Math.round(seconds % 60);
+                return `${minutes}m ${remainingSeconds}s`;
+            }
+        }
+
         const submissionId = getSubmissionId();
         const loader = document.getElementById('loader');
         const resultContainer = document.getElementById('result');
@@ -180,6 +208,7 @@
                     document.getElementById('age').innerText = data.age || 'N/A';
                     document.getElementById('sex').innerText = data.sex || 'N/A';
                     document.getElementById('createdAt').innerText = formatTimestamp(data.created_at);
+                    document.getElementById('processingTime').innerText = formatProcessingTime(data.processing_time);
                     document.getElementById('scanImage').src = data.image_url || 'https://placehold.co/600x600/e2e8f0/475569?text=Image+Not+Available';
 
                     // --- Populate Analysis Results ---
@@ -199,6 +228,15 @@
                     document.getElementById('quality').innerText = data.quality || 'N/A';
                     // Convert boolean to a more readable format
                     document.getElementById('scanMatch').innerText = typeof data.scan_match === 'boolean' ? (data.scan_match ? 'Yes' : 'No') : 'N/A';
+                    document.getElementById('modalityMatch').innerText = typeof data.modality_match === 'boolean' ? (data.modality_match ? 'Yes' : 'No') : 'N/A';
+                    
+                    // Show rejection reason only if status is rejected and reason exists
+                    const rejectionReasonContainer = document.getElementById('rejectionReasonContainer');
+                    if (status === 'rejected' && data.reason_of_rejection) {
+                        document.getElementById('reasonOfRejection').innerText = data.reason_of_rejection;
+                        rejectionReasonContainer.classList.remove('hidden');
+                    }
+                    
                     document.getElementById('diagnosis').innerText = data.diagnosis || 'No diagnosis was generated.';
 
                     // Hide loader and show the result container
