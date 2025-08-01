@@ -117,7 +117,6 @@ class MedicalLLMService:
                 elif status == 'FAILED':
                     raise Exception(f"Job failed: {result}")
                 elif status in ['IN_QUEUE', 'IN_PROGRESS']:
-                    print(f"Status: {status}, waiting...")
                     time.sleep(2)  # Wait 2 seconds before checking again
                 else:
                     raise Exception(f"Unknown status: {status}")
