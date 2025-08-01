@@ -86,7 +86,7 @@ class MedicalLLMService:
             ]   
             payload = {
                     "input": {
-                        "model": "google/medgemma-4b-it",
+                        "model": f"{settings.MODEL}",
                         "messages": messages,
                         "max_tokens": 2048,
                     }

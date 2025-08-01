@@ -14,6 +14,7 @@ class Settings():
     
     # LLM Settings
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    MODEL = os.getenv('MODEL')
     LLM_BASE_URL= os.getenv('LLM_BASE_URL')
     LLM_API = os.getenv('RUNPOD_API_KEY')
     
