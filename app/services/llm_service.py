@@ -88,7 +88,7 @@ class MedicalLLMService:
                     "input": {
                         "model": f"{settings.MODEL}",
                         "messages": messages,
-                        "max_tokens": 2048,
+                        "sampling_params":{"max_tokens": 4000}
                     }
                 }      
             headers = {
