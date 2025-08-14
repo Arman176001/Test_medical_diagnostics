@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -10,9 +11,16 @@ import time
 from pydantic import BaseModel
 
 class UploadURLRequest(BaseModel):
-    filename: str
-    content_type: str
+    filenames: List[str]
+    content_types: List[str]
 
+class ScanSubmission(BaseModel):
+    scan_name: str
+    modality: str
+    age: int
+    sex: str
+    image_urls: List[str] 
+    blob_names: List[str]
         
 app = FastAPI(title="Medical Testing App", version="1.0.0")
 
@@ -25,38 +33,36 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 async def upload_form(request: Request):
     return templates.TemplateResponse("upload.html", {"request": request})
 
-@app.post("/api/generate-upload-url")
-async def generate_upload_url(request: UploadURLRequest): # Use the Pydantic model here
-    """Generate signed URL for direct upload to GCP bucket"""
-    try:
-        # Access data from the request object
-        unique_filename = f"{uuid.uuid4()}_{request.filename}"
-        upload_data = gcp_service.generate_upload_url(unique_filename, request.content_type)
 
-        return JSONResponse(content=upload_data)
+@app.post("/api/generate-upload-urls")
+async def generate_upload_urls(request: UploadURLRequest):
+    """Generate signed URLs for direct upload to GCP bucket"""
+    try:
+        upload_data_list = []
+        
+        for filename, content_type in zip(request.filenames, request.content_types):
+            # Pass the original filename to the service - let it handle the uniqueness
+            upload_data = gcp_service.generate_upload_url(filename, content_type)
+            upload_data_list.append(upload_data)
+
+        return JSONResponse(content=upload_data_list)  # Return array directly
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @app.post("/api/submit-scan")
 async def submit_scan(
-    background_tasks: BackgroundTasks,
-    scan_name: str = Form(...),
-    modality: str = Form(...),
-    age: int = Form(...),
-    sex: str = Form(...),
-    image_url: str = Form(...),
-    blob_name: str = Form(...)
+    submission: ScanSubmission, background_tasks: BackgroundTasks
 ):
     """Submit scan for processing"""
     try:
         # Create submission record in Supabase
         submission = await supabase_service.create_submission(
-            scan_name=scan_name,
-            modality=modality,
-            age=age,
-            sex=sex,
-            image_url=image_url,
-            gcp_blob_name=blob_name
+            scan_name=submission.scan_name,
+            modality=submission.modality,
+            age=submission.age,
+            sex=submission.sex,
+            image_urls=submission.image_urls,
+            blob_names=submission.blob_names
         )
         
         # Start background processing
@@ -95,7 +101,7 @@ async def process_scan(submission_id: int):
         image_path=submission['image_url']
         # Call the function with the correct arguments
         llm_result = llm_service.analyze_scan(
-            image_path=image_path,
+            image_paths_str=image_path,
             order_details=order_details
         )
 
