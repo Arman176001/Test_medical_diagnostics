@@ -99,7 +99,7 @@ class MedicalLLMService:
         self.quality_model = genai.GenerativeModel('gemini-2.5-flash')
 
     def _analyze_diagnosis_and_match(self, image_paths: list, order_details: dict) -> dict:
-        with open("app/services/MedgemmaPromptV5.txt",'r',encoding='utf-8') as f:
+        with open("app/services/MedgemmaPromptV6.txt",'r',encoding='utf-8') as f:
             system_prompt = f.read()
             
         user_data_prompt = f"ordered_scan: {json.dumps(order_details)}"
@@ -166,7 +166,7 @@ class MedicalLLMService:
             return {"error": f"Failed to get diagnostic analysis: {e}"}
 
     def _assess_image_quality(self, local_image_paths: list, order_details: dict) -> dict:
-        with open("app/services/SystemPromptV8.txt", "r",encoding='utf-8') as f:
+        with open("app/services/SystemPromptV9.txt", "r",encoding='utf-8') as f:
             system_prompt = f.read()
         try:
             # Prepare content with all images
