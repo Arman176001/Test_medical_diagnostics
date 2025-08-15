@@ -8,6 +8,8 @@ import requests
 from app.config import settings
 import time
 from huggingface_hub import InferenceClient
+import ast
+
 # --- Configuration ---
 # It's recommended to set your Gemini API key as an environment variable
 # for security purposes.
@@ -39,6 +41,37 @@ def _download_image_to_tempfile(image_path: str) -> str:
     except requests.exceptions.RequestException as e:
         print(f"Error downloading image from {image_path}: {e}")
         return None
+
+def _parse_image_paths(image_paths_str: str) -> list:
+    """
+    Parse the string representation of image paths list into actual list.
+    Handles both string representation of list and actual list.
+    """
+    try:
+        if isinstance(image_paths_str, str):
+            # Try to parse as literal (for string representation of list)
+            try:
+                parsed = ast.literal_eval(image_paths_str)
+                if isinstance(parsed, list):
+                    return parsed
+            except (ValueError, SyntaxError):
+                # If literal_eval fails, try json.loads
+                try:
+                    parsed = json.loads(image_paths_str)
+                    if isinstance(parsed, list):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            
+            # If all parsing fails, treat as single URL
+            return [image_paths_str]
+        elif isinstance(image_paths_str, list):
+            return image_paths_str
+        else:
+            return [str(image_paths_str)]
+    except Exception as e:
+        print(f"Error parsing image paths: {e}")
+        return []
     
 class MedicalLLMService:
     """
@@ -65,12 +98,22 @@ class MedicalLLMService:
         # Configuration for the quality assessment model (Gemini)
         self.quality_model = genai.GenerativeModel('gemini-2.5-flash')
 
-    def _analyze_diagnosis_and_match(self, image_path: str, order_details: dict) -> dict:
+    def _analyze_diagnosis_and_match(self, image_paths: list, order_details: dict) -> dict:
         with open("app/services/MedgemmaPromptV5.txt",'r',encoding='utf-8') as f:
             system_prompt = f.read()
             
         user_data_prompt = f"ordered_scan: {json.dumps(order_details)}"
         try:
+            # Prepare content with multiple images
+            user_content = [{"type": "text", "text": user_data_prompt}]
+            
+            # Add all images to the content
+            for image_path in image_paths:
+                user_content.append({
+                    "type": "image_url", 
+                    "image_url": {"url": image_path}
+                })
+            
             messages = [
                 {
                     "role": "system",
@@ -78,10 +121,7 @@ class MedicalLLMService:
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_data_prompt},
-                        {"type": "image_url", "image_url": {"url": image_path}}
-                    ]
+                    "content": user_content
                 }
             ]   
             payload = {
@@ -125,13 +165,22 @@ class MedicalLLMService:
             print(f"Error in diagnostic analysis: {e}")
             return {"error": f"Failed to get diagnostic analysis: {e}"}
 
-    def _assess_image_quality(self, image_path: str, order_details : dict) -> dict:
-
+    def _assess_image_quality(self, local_image_paths: list, order_details: dict) -> dict:
         with open("app/services/SystemPromptV8.txt", "r",encoding='utf-8') as f:
             system_prompt = f.read()
         try:
-            img = Image.open(image_path)
-            response = self.quality_model.generate_content([system_prompt, img, f"ordered_scan: {order_details}"] )
+            # Prepare content with all images
+            content = [system_prompt]
+            
+            # Add all images to the content
+            for image_path in local_image_paths:
+                img = Image.open(image_path)
+                content.append(img)
+            
+            # Add order details
+            content.append(f"ordered_scan: {order_details}")
+            
+            response = self.quality_model.generate_content(content)
             
             # Clean the response to extract the JSON part
             json_part = response.text.strip().lstrip('```json').rstrip('```').strip()
@@ -141,38 +190,58 @@ class MedicalLLMService:
             print(f"Error in quality assessment: {e}")
             return {"error": f"Failed to get quality assessment: {e}"}
 
-    def analyze_scan(self, image_path: str, order_details: dict) -> dict:
-
-        local_image_path = _download_image_to_tempfile(image_path)
-    
-        if not local_image_path:
-            # If the download fails, we cannot proceed.
+    def analyze_scan(self, image_paths_str: str, order_details: dict) -> dict:
+        # Parse the image paths string into a list
+        image_paths = _parse_image_paths(image_paths_str)
+        
+        if not image_paths:
             return {
                 "status": "REJECTED",
-                "reason": "Failed to download image from the provided URL for quality assessment.",
-                "diagnosis_error": "Image download failed.",
-                "quality_error": "Image download failed.",
+                "reason": "No valid image paths provided.",
+                "diagnosis_error": "No images to analyze.",
+                "quality_error": "No images to analyze.",
+            }
+        
+        # Download all images to temporary files
+        local_image_paths = []
+        failed_downloads = []
+        
+        for image_path in image_paths:
+            local_path = _download_image_to_tempfile(image_path)
+            if local_path:
+                local_image_paths.append(local_path)
+            else:
+                failed_downloads.append(image_path)
+        
+        if not local_image_paths:
+            # If all downloads failed, we cannot proceed
+            return {
+                "status": "REJECTED",
+                "reason": "Failed to download any images from the provided URLs.",
+                "diagnosis_error": "All image downloads failed.",
+                "quality_error": "All image downloads failed.",
+                "failed_downloads": failed_downloads,
             }
 
         try:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                # --- KEY CHANGE HERE ---
-                # The diagnostic/Gradio function gets the original URL, as it requires.
-                future_diagnosis = executor.submit(self._analyze_diagnosis_and_match, image_path, order_details)
+                # The diagnostic function gets the original URLs (multiple images)
+                future_diagnosis = executor.submit(self._analyze_diagnosis_and_match, image_paths, order_details)
                 
-                # The quality assessment function gets the temporary local file path to prevent errors.
-                future_quality = executor.submit(self._assess_image_quality, local_image_path, order_details)
+                # The quality assessment function gets the temporary local file paths
+                future_quality = executor.submit(self._assess_image_quality, local_image_paths, order_details)
 
                 # Retrieve results from both concurrent tasks
                 diagnosis_result = future_diagnosis.result()
                 quality_result = future_quality.result()
 
         finally:
-            # Always clean up the temporary file after analysis is complete
-            if os.path.exists(local_image_path):
-                os.remove(local_image_path)
+            # Always clean up all temporary files after analysis is complete
+            for local_path in local_image_paths:
+                if os.path.exists(local_path):
+                    os.remove(local_path)
 
-        # --- The rest of your result combination logic remains the same ---
+        # Combine results
         if "error" in diagnosis_result or "error" in quality_result:
             return {
                 "status": "REJECTED",
@@ -220,33 +289,23 @@ if __name__ == '__main__':
             "sex": "Male"
         }
 
-        # Example image path (using the bus image for demonstration purposes)
-        # In a real scenario, this would be a medical scan image.
-        # The model will likely fail the "scan_match" which demonstrates the rejection logic.
-        image_file_path = 'https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png'
+        # Example with multiple images (string representation of list)
+        image_paths_str = '["https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png", "https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png"]'
         
-        print(f"Image path: {image_file_path}\n")
+        print(f"Image paths: {image_paths_str}\n")
 
         # Run the analysis
-        analysis_result = llm_service.analyze_scan(image_file_path, order_details)
+        analysis_result = llm_service.analyze_scan(image_paths_str, order_details)
 
         # Print the final, consolidated report
         print("--- Final Analysis Report ---")
         print(json.dumps(analysis_result, indent=2))
         print("-----------------------------")
 
-        # Example of a likely successful case (if you have a chest x-ray image)
-        # try:
-        #     chest_xray_path = "path/to/your/chest_xray.jpg"
-        #     chest_order = {
-        #         "scan_name": "Chest X-ray",
-        #         "modality": "X-ray",
-        #         "age": "62",
-        #         "sex": "Female"
-        #     }
-        #     print("\nAnalyzing a chest x-ray (example):")
-        #     chest_result = llm_service.analyze_scan(chest_xray_path, chest_order)
-        #     print(json.dumps(chest_result, indent=2))
-        # except FileNotFoundError:
-        #      print("\nSkipping chest x-ray example: image file not found.")
-
+        # Example with single image
+        print("\nAnalyzing single image:")
+        single_image_result = llm_service.analyze_scan(
+            "https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png", 
+            order_details
+        )
+        print(json.dumps(single_image_result, indent=2))

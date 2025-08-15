@@ -61,7 +61,7 @@ class SupabaseDB:
     
     # Submission operations
     def create_submission(self, scan_name: str, modality: str, age: int, sex: str, 
-                         image_url: str, gcp_blob_name: str) -> Dict[str, Any]:
+                         image_url: List[str], gcp_blob_name: List[str]) -> Dict[str, Any]:
         """Create a new submission"""
         data = {
             'scan_name': scan_name,

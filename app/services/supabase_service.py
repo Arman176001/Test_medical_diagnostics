@@ -7,7 +7,7 @@ class SupabaseService:
         self.db = db
     
     async def create_submission(self, scan_name: str, modality: str, age: int, 
-                              sex: str, image_url: str, gcp_blob_name: str) -> Dict[str, Any]:
+                              sex: str, image_urls: List[str], blob_names: List[str]) -> Dict[str, Any]:
         """Create a new submission"""
         try:
             submission = self.db.create_submission(
@@ -15,8 +15,8 @@ class SupabaseService:
                 modality=modality,
                 age=age,
                 sex=sex,
-                image_url=image_url,
-                gcp_blob_name=gcp_blob_name
+                image_url=image_urls,
+                gcp_blob_name=blob_names,
             )
             return submission
         except Exception as e:

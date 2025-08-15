@@ -6,11 +6,12 @@
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #6c757d; cursor: not-allowed; }
-        .upload-area { border: 2px dashed #ddd; padding: 20px; text-align: center; margin: 10px 0; }
+        .upload-area { border: 2px dashed #ddd; padding: 20px; text-align: center; margin: 10px 0; border-radius: 4px; cursor: pointer; }
+        .upload-area.dragover { background-color: #f0f8ff; border-color: #007bff; }
         .progress { width: 100%; background-color: #f0f0f0; border-radius: 4px; margin: 10px 0; }
         .progress-bar { height: 20px; background-color: #007bff; border-radius: 4px; width: 0%; transition: width 0.3s; }
         .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
@@ -46,12 +47,22 @@
                 <option value="Other">Other</option>
             </select>
         </div>
-        
+
+        <!-- CT Scan Checkbox -->
+        <div class="form-group">
+            <label style="display: inline-flex; align-items: center; font-weight: normal;">
+                <input type="checkbox" id="isCtScan" name="is_ct_scan" style="width: auto; margin-right: 8px;">
+                This is a CT Scan (upload multiple slices)
+            </label>
+        </div>
+
+        <!-- File Upload Area -->
         <div class="form-group">
             <label for="imageFile">Medical Image:</label>
-            <div class="upload-area">
-                <input type="file" id="imageFile" accept="image/*,.dcm" required>
-                <p>Click to select or drag and drop your medical image here</p>
+            <div id="uploadArea" class="upload-area">
+                <input type="file" id="imageFile" class="hidden" style="display:none;" accept="image/*,.dcm" required>
+                <p id="uploadText">Click to select or drag and drop your medical image here</p>
+                <div id="fileList" style="margin-top: 8px; font-size: 0.9em; color: #555;"></div>
             </div>
         </div>
         
@@ -65,109 +76,173 @@
     </form>
 
     <script>
-        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const file = document.getElementById('imageFile').files[0];
-            const submitBtn = document.getElementById('submitBtn');
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadForm = document.getElementById('uploadForm');
+            const imageFile = document.getElementById('imageFile');
+            const isCtScan = document.getElementById('isCtScan');
+            const uploadArea = document.getElementById('uploadArea');
+            const uploadText = document.getElementById('uploadText');
+            const fileList = document.getElementById('fileList');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
             const statusMessage = document.getElementById('statusMessage');
-            
-            if (!file) {
-                showStatus('Please select a file', 'error');
-                return;
+            const submitBtn = document.getElementById('submitBtn');
+
+            // --- Event Listeners ---
+
+            // Toggle multiple file selection based on checkbox
+            isCtScan.addEventListener('change', () => {
+                imageFile.multiple = isCtScan.checked;
+                uploadText.textContent = isCtScan.checked 
+                    ? 'Click to select or drag and drop CT slices here' 
+                    : 'Click to select or drag and drop your medical image here';
+                imageFile.value = ''; // Clear selection when mode changes
+                updateFileList();
+            });
+
+            // Handle click to open file dialog
+            uploadArea.addEventListener('click', () => imageFile.click());
+
+            // Handle drag and drop
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                imageFile.files = e.dataTransfer.files;
+                updateFileList();
+            });
+
+            // Update file list on file selection
+            imageFile.addEventListener('change', updateFileList);
+
+            // Handle form submission
+            uploadForm.addEventListener('submit', handleSubmit);
+
+            // --- Functions ---
+
+            function updateFileList() {
+                if (!imageFile.files || imageFile.files.length === 0) {
+                    fileList.innerHTML = '';
+                    return;
+                }
+                if (imageFile.files.length === 1) {
+                    fileList.innerHTML = `<strong>Selected file:</strong> ${imageFile.files[0].name}`;
+                } else {
+                    fileList.innerHTML = `<strong>Selected files:</strong> ${imageFile.files.length} slices`;
+                }
             }
             
-            try {
-                // Disable submit button and show progress
+            function showStatus(message, type) {
+                statusMessage.textContent = message;
+                statusMessage.className = `status-message status-${type}`;
+                statusMessage.style.display = 'block';
+            }
+
+            async function handleSubmit(event) {
+                event.preventDefault();
+                const files = imageFile.files;
+
+                if (files.length === 0) {
+                    showStatus('Please select at least one file.', 'error');
+                    return;
+                }
+
+                // Reset UI and disable button
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Uploading...';
-                document.getElementById('progressContainer').style.display = 'block';
-                document.getElementById('progressBar').style.width = '10%';
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '0%';
                 
-                // Get upload URL
-                showStatus('Generating upload URL...', 'success');
-                const uploadUrlResponse = await fetch('/api/generate-upload-url', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        filename: file.name,
-                        content_type: file.type
-                    })
-                });
-                
-                if (!uploadUrlResponse.ok) {
-                    throw new Error(`Failed to generate upload URL: ${uploadUrlResponse.status}`);
-                }
-                
-                const uploadData = await uploadUrlResponse.json();
-                document.getElementById('progressBar').style.width = '30%';
-                
-                // Upload to GCP
-                showStatus('Uploading file to cloud storage...', 'success');
-                const uploadResponse = await fetch(uploadData.upload_url, {
-                    method: 'PUT',
-                    body: file,
-                    headers: {
-                        'Content-Type': file.type
+                try {
+                    // Step 1: Get upload URLs from our backend
+                    showStatus('Requesting upload permissions...', 'success');
+                    const filenames = Array.from(files).map(f => f.name);
+                    const contentTypes = Array.from(files).map(f => f.type || 'application/octet-stream');
+                    progressBar.style.width = '10%';
+
+                    const uploadUrlResponse = await fetch('/api/generate-upload-urls', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filenames, content_types: contentTypes })
+                    });
+
+                    if (!uploadUrlResponse.ok) {
+                        throw new Error('Failed to get upload URLs');
                     }
-                });
-                
-                if (!uploadResponse.ok) {
-                    throw new Error(`File upload failed: ${uploadResponse.status}`);
+
+                    const uploadDatas = await uploadUrlResponse.json(); // This is now an array directly
+                    progressBar.style.width = '20%';
+
+                    // Step 2: Upload all files to GCP in parallel
+                    showStatus(`Uploading ${files.length} file(s) to cloud storage...`, 'success');
+                    const uploadPromises = Array.from(files).map((file, index) => {
+                        const uploadData = uploadDatas[index];
+                        return fetch(uploadData.upload_url, { // Use upload_url from the service
+                            method: 'PUT',
+                            body: file,
+                            headers: { 'Content-Type': file.type }
+                        });
+                    });
+                    const uploadResponses = await Promise.all(uploadPromises);
+
+                    // Check if all uploads were successful
+                    uploadResponses.forEach(res => {
+                        if (!res.ok) throw new Error(`A file upload failed: ${res.statusText}`);
+                    });
+                    progressBar.style.width = '75%';
+                    
+                    // Step 3: Submit for processing with all file URLs
+                    showStatus('Submitting for analysis...', 'success');
+                    const publicUrls = uploadDatas.map(d => d.public_url);
+                    const blobNames = uploadDatas.map(d => d.blob_name);
+
+                    const submitPayload = {
+                        scan_name: document.getElementById('scanName').value,
+                        modality: document.getElementById('modality').value,
+                        age: document.getElementById('age').value,
+                        sex: document.getElementById('sex').value,
+                        image_urls: publicUrls, 
+                        blob_names: blobNames,
+                    };
+
+                    const submitResponse = await fetch('/api/submit-scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(submitPayload)
+                    });
+
+                    if (!submitResponse.ok) {
+                        throw new Error(`Failed to submit for processing: ${submitResponse.statusText}`);
+                    }
+                    
+                    const result = await submitResponse.json();
+                    progressBar.style.width = '100%';
+                    showStatus('Scan submitted successfully! Redirecting...', 'success');
+
+                    // Redirect after a short delay
+                    setTimeout(() => {
+                        if(result.submission_id) {
+                           window.location.href = `/processing/${result.submission_id}`;
+                        }
+                    }, 1500);
+
+                } catch (error) {
+                    console.error('Upload process failed:', error);
+                    showStatus(`Error: ${error.message}`, 'error');
+                    // Reset form state on failure
+                    progressBar.style.width = '0%';
+                    progressContainer.style.display = 'none';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Upload and Process';
                 }
-                
-                document.getElementById('progressBar').style.width = '60%';
-                
-                // Submit for processing (this should return immediately)
-                showStatus('Submitting for processing...', 'success');
-                const submitData = new FormData();
-                submitData.append('scan_name', formData.get('scan_name'));
-                submitData.append('modality', formData.get('modality'));
-                submitData.append('age', formData.get('age'));
-                submitData.append('sex', formData.get('sex'));
-                submitData.append('image_url', uploadData.public_url);
-                submitData.append('blob_name', uploadData.blob_name);
-                
-                const submitResponse = await fetch('/api/submit-scan', {
-                    method: 'POST',
-                    body: submitData
-                });
-                
-                if (!submitResponse.ok) {
-                    throw new Error(`Submission failed: ${submitResponse.status}`);
-                }
-                
-                const result = await submitResponse.json();
-                document.getElementById('progressBar').style.width = '100%';
-                
-                // Show success message briefly before redirect
-                showStatus('Scan submitted successfully! Redirecting to processing page...', 'success');
-                
-                // Redirect immediately after successful submission
-                setTimeout(() => {
-                    window.location.href = `/processing/${result.submission_id}`;
-                }, 1000); // Small delay to show success message
-                
-            } catch (error) {
-                console.error('Error:', error);
-                showStatus(`Upload failed: ${error.message}. Please try again.`, 'error');
-                
-                // Reset form state
-                document.getElementById('progressContainer').style.display = 'none';
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Upload and Process';
             }
         });
-        
-        function showStatus(message, type) {
-            const statusMessage = document.getElementById('statusMessage');
-            statusMessage.textContent = message;
-            statusMessage.className = `status-message status-${type}`;
-            statusMessage.style.display = 'block';
-        }
     </script>
 </body>
 </html>
